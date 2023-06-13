@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <style>
+      html,
+      body {
+        padding: 0;
+        margin: 0;
+      }
+      select,
+      input,
+      button {
+        border-radius: 3px;
+        border-color: black;
+      }
+      .vertical-center {
+        margin: 0;
+        position: absolute;
+        top: 50%;
+        -ms-transform: translateY(-50%);
+        transform: translateY(-50%);
+      }
+      .connecting-grid {
+        display: block;
+        position: absolute;
+        left: 16px;
+        bottom: 0;
+        padding-bottom: 66px;
+        z-index: 2;
+        width: calc(100% - 16px);
+        margin-left: auto;
+        margin-right: auto;
+        display: block;
+      }
+      .connecting-grid select,
+      .connecting-grid input,
+      .connecting-grid button {
+        margin-top: 3px;
+        margin-bottom: 3px;
+        color: black;
+        height: 30px;
+        border-width: 1px;
+        box-shadow: 0;
+        border-color: rgba(0, 0, 0, 0.2);
+        outline: none !important;
+      }
+      .connecting-grid input {
+        height: 22px;
+        padding: 3px 5px;
+      }
+      .connecting-grid button {
+        padding-left: 9px;
+        padding-right: 9px;
+      }
+      .video-bg {
+        background: url("https://i.ibb.co/s1LBhb6/claw-machine-bg.png")
+          no-repeat center center fixed;
+        // background: url('/static/images/claw_machine_bg.png') no-repeat center center fixed;
+        // background: url('https://www.files-conversion.com/file-convert/result/claw_bg.mjpeg') no-repeat center center fixed;
+        -webkit-background-size: cover;
+        -moz-background-size: cover;
+        -o-background-size: cover;
+        background-size: cover;
+
+        /* Set rules to fill background */
+        min-height: 100%;
+        min-width: 1024px;
+
+        /* Set up proportionate scaling */
+        width: 100%;
+        height: auto;
+
+        /* Set up positioning */
+        position: fixed;
+        top: 0;
+        left: 0;
+      }
+
+      #video-background {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: -1;
+        overflow: hidden;
+      }
+      #video-background video {
+        width: 100vw;
+        height: 100vh;
+        object-fit: cover;
+      }
+
+      #background-video {
+        width: 100vw;
+        height: 100vh;
+        object-fit: cover;
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        z-index: -1;
+      }
+      @media (max-width: 750px) {
+        #background-video {
+          display: none;
+        }
+        body {
+          background: url("https://assets.codepen.io/6093409/river.jpg")
+            no-repeat;
+          background-size: cover;
+        }
+      }
+    </style>
+  </head>
+  <body class="vertical-center--">
+    <!-- <img width="100%" height="auto" id="video-bg" alt="image"> -->
+    <!-- <div class="video-bg" id="video-bg"></div> -->
+
+    <!-- 
+    <div id="video-background">
+      <video autoplay loop muted>
+        <source src="https://streamable.com/e/q4miym" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+    </div>
+    -->
+
+    <div id="video-background">
+      <video autoplay loop muted>
+        <source
+          src="https://assets.codepen.io/6093409/river.mp4"
+          type="video/mp4"
+        />
+        Your browser does not support the video tag.
+      </video>
+    </div>
+
+    <!-- 
+    <video id="background-video" autoplay loop muted poster="https://assets.codepen.io/6093409/river.jpg">
+      <source src="https://assets.codepen.io/6093409/river.mp4" type="video/mp4">
+    </video>-->
+
+    <div id="connecting-grid" class="connecting-grid" style="display: none">
+      <select
+        id="connect_socket_protocol"
+        name="connect_socket_protocol"
+        style="width: 45px; display: none"
+      >
+        <option value="ws">ws</option>
+        <option value="wss">wss</option>
+      </select>
+      <input
+        type="text"
+        value="192.168.128.101"
+        id="connect_socket_ip"
+        placeholder="IP Address"
+        style="width: 76px; display: none"
+      />
+      <input
+        type="text"
+        value="65431"
+        id="connect_socket_port"
+        placeholder="Port"
+        style="width: 38px; display: none"
+      />
+      <button id="connect_socket" type="button" style="margin: 0">Start</button>
+      <button id="disconnect_socket" type="button" style="margin: 0">
+        Stop
+      </button>
+    </div>
+    <script>
+      let socket, mediaSource, keepAliveId, protocol, ip, port;
+      let isConnected = false;
+      let buttonState = [0, 0, 0, 0, 0]; //left,up,right,down,action
+      let lastEmittedState = [0, 0, 0, 0, 0];
+      let connectButton = document.getElementById("connect_socket");
+      let disconnectButton = document.getElementById("disconnect_socket");
+
+      function keepAlive() {
+        clearTimeout(keepAliveId);
+        keepAliveId = setTimeout(() => {
+          keepAlive();
+        }, 1000);
+      }
+
+      function emitKeyEvent() {
+        if (isConnected) {
+          // Setup buttonState defaults
+          if (
+            buttonState[0] != lastEmittedState[0] ||
+            buttonState[1] != lastEmittedState[1] ||
+            buttonState[2] != lastEmittedState[2] ||
+            buttonState[3] != lastEmittedState[3] ||
+            buttonState[4] != lastEmittedState[4]
+          ) {
+            socket.send(buttonState);
+            lastEmittedState[0] = buttonState[0];
+            lastEmittedState[1] = buttonState[1];
+            lastEmittedState[2] = buttonState[2];
+            lastEmittedState[3] = buttonState[3];
+            lastEmittedState[4] = buttonState[4];
+          }
+        }
+      }
+
+      const buttonPress = (buttonStateArr) => {
+        buttonState = buttonStateArr;
+        emitKeyEvent();
+        return;
+      };
+
+      const keyCodes = {
+        left: [65, 37],
+        up: [87, 38],
+        right: [68, 39],
+        down: [83, 40],
+        action: [13, 32],
+      };
+
+      function handleKeyEvent(e, value) {
+        if (e.defaultPrevented) return;
+
+        Object.keys(keyCodes).forEach((key) => {
+          if (keyCodes[key].includes(e.keyCode)) {
+            buttonState[key] = value;
+            emitKeyEvent();
+          }
+        });
+      }
+
+      document.addEventListener("keyup", (e) => handleKeyEvent(e, 0));
+      document.addEventListener("keydown", (e) => handleKeyEvent(e, 1));
+
+      connectButton.addEventListener("click", function () {
+        if (isConnected) {
+          alert("Already connected to " + protocol + "://" + ip + ":" + port);
+          return;
+        }
+
+        protocol = document.getElementById("connect_socket_protocol").value;
+        ip = document.getElementById("connect_socket_ip").value;
+        port = document.getElementById("connect_socket_port").value;
+
+        if (ip == "" || port == "") {
+          alert("Please specify ip and port");
+          return;
+        }
+
+        try {
+          console.log("Connecting to " + protocol + "://" + ip + ":" + port);
+          socket = new WebSocket(protocol + "://" + ip + ":" + port);
+
+          socket.onopen = function () {
+            isConnected = true;
+            console.log("Connection opened");
+
+            keepAlive();
+          };
+
+          socket.onmessage = function (evt) {
+            if (evt.data == "close") {
+              console.log("Server asked to close the connection...");
+              socket.close();
+            } else {
+              console.log("Server Response: " + evt.data);
+            }
+          };
+
+          socket.onclose = function () {
+            isConnected = false;
+            console.log("Connection closed");
+          };
+        } catch (err) {
+          console.log(err.message);
+          return;
+        }
+      });
+
+      disconnectButton.addEventListener("click", function () {
+        if (isConnected) {
+          socket.send("close");
+          return;
+        } else {
+          alert("Client is not connected to any server");
+        }
+      });
+    </script>
+    <script>
+      // const clawVBg = 'https://i.ibb.co/K7r4WHT/claw-machine-bg.png'
+      // const clawHBg = 'https://i.ibb.co/y5wHkMy/claw-machine-bg-flip.png'
+
+      // document.getElementById('video-bg').style.backgroundImage = 'url("http://192.168.128.101:8080/stream/video.mjpeg")';
+      // document.getElementById('video-bg').style.backgroundImage = 'url(' + clawVBg + ')';
+
+      window.addEventListener("message", (message) => {
+        const data = JSON.parse(message.data);
+
+        if (data?.message) {
+          buttonPress(data.message);
+        } else if (data?.port) {
+          let videoStream;
+
+          // if (data.port === 8080) videoStream = clawVBg;
+          // if (data.port === 9000) videoStream = clawHBg;
+
+          videoStream =
+            "http://192.168.128.101:" + data.port + "/stream/video.mjpeg";
+
+          // document.getElementById('video-bg').style.backgroundImage = 'url(' + videoStream + ')';
+        }
+      });
+    </script>
+  </body>
+</html>
